@@ -5,6 +5,8 @@ using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
+using Windows.Storage;
+using Windows.System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
@@ -22,9 +24,159 @@ namespace GameDemo
     /// </summary>
     public sealed partial class MainPage : Page
     {
+        // butterfly
+        private Butterfly butterfly;
+
+        // flowers
+        private List<Flower> flowers;
+
+        // keys
+        private bool UpPressed;
+        private bool LeftPressed;
+        private bool RightPressed;
+
+        // game loop
+        private DispatcherTimer timer;
+
+        // audio
+        private MediaElement mediaElement;
+
         public MainPage()
         {
             this.InitializeComponent();
+
+            // create butterfly
+            butterfly = new Butterfly
+            {
+                LocationX = MyCanvas.Width / 2,
+                LocationY = MyCanvas.Height / 2
+            };
+            // add butterfly to canvas
+            MyCanvas.Children.Add(butterfly);
+
+            // init list of flowers
+            flowers = new List<Flower>();
+
+            // key listeners
+            Window.Current.CoreWindow.KeyDown += CoreWindow_KeyDown;
+            Window.Current.CoreWindow.KeyUp += CoreWindow_KeyUp;
+
+            // mouse listener
+            Window.Current.CoreWindow.PointerPressed += CoreWindow_PointerPressed;
+
+            // load audio
+            LoadAudio();
+
+            // start game loop
+            timer = new DispatcherTimer();
+            timer.Interval = new TimeSpan(0, 0, 0, 0, 1000 / 60);
+            timer.Tick += Timer_Tick;
+            timer.Start();
+        }
+
+        // audio when collision happens
+        private async void LoadAudio()
+        {
+            StorageFolder folder =
+                await Windows.ApplicationModel.Package.Current.InstalledLocation.GetFolderAsync("Assets");
+            StorageFile file =
+                await folder.GetFileAsync("ding.wav");
+            var stream = await file.OpenAsync(FileAccessMode.Read);
+
+            mediaElement = new MediaElement();
+            mediaElement.AutoPlay = false;
+            mediaElement.SetSource(stream, file.ContentType);
+        }
+
+        private void CoreWindow_PointerPressed(Windows.UI.Core.CoreWindow sender, Windows.UI.Core.PointerEventArgs args)
+        {
+            Flower flower = new GameDemo.Flower();
+            flower.locationX = args.CurrentPoint.Position.X - flower.Width / 2; // cursor position X / 2
+            flower.locationY = args.CurrentPoint.Position.Y - flower.Height / 2; // cursor position Y / 2
+            // add to canvas
+            MyCanvas.Children.Add(flower);
+            flower.SetLocation();
+            // add flowers list
+            flowers.Add(flower);
+        }
+
+        // game loop
+        private void Timer_Tick(object sender, object e)
+        {
+            // move butterfly if up pressed
+            if (UpPressed == true) { butterfly.Move(); }
+
+            // rotate butterfly if left or right pressed
+            if (LeftPressed) { butterfly.Rotate(-1); } //-1 == left, 1 == right
+            if (RightPressed) { butterfly.Rotate(1); }
+
+            // update butterfly position
+            butterfly.SetLocation();
+
+            // collision...
+            CheckCollision();
+        }
+
+        private void CheckCollision()
+        {
+            // loop flowers list
+            foreach (Flower flower in flowers)
+            {
+                // get rects
+                Rect BRect = new Rect(
+                    butterfly.LocationX, butterfly.LocationY,
+                    butterfly.ActualWidth, butterfly.ActualHeight
+                    );
+                Rect FRect = new Windows.Foundation.Rect(
+                    flower.locationX, flower.locationY,
+                    flower.ActualWidth, flower.ActualHeight
+                    );
+                // do objects intersect
+                BRect.Intersect(FRect);
+                if (!BRect.IsEmpty)
+                {
+                    // collision, area isn't empty
+                    // remove flower from canvas
+                    MyCanvas.Children.Remove(flower);
+                    // remove from list
+                    flowers.Remove(flower);
+                    // play audio
+                    mediaElement.Play();
+                    break;
+                }
+            }
+        }
+
+        private void CoreWindow_KeyUp(Windows.UI.Core.CoreWindow sender, Windows.UI.Core.KeyEventArgs args)
+        {
+            switch (args.VirtualKey)
+            {
+                case VirtualKey.Up:
+                    UpPressed = false;
+                    break;
+                case VirtualKey.Left:
+                    LeftPressed = false;
+                    break;
+                case VirtualKey.Right:
+                    RightPressed = false;
+                    break;
+            }
+        }
+
+        private void CoreWindow_KeyDown(Windows.UI.Core.CoreWindow sender, Windows.UI.Core.KeyEventArgs args)
+        {
+            switch (args.VirtualKey)
+            {
+                case VirtualKey.Up:
+                    UpPressed = true;
+                    break;
+                case VirtualKey.Left:
+                    LeftPressed = true;
+                    break;
+                case VirtualKey.Right:
+                    RightPressed = true;
+                    break;
+            }
         }
     }
 }
